@@ -1,0 +1,918 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Shift Resource Dashboard</title>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<style>
+*{box-sizing:border-box}
+body{margin:0;font-family:Arial,sans-serif;background:#f5f6fa;color:#25263a}
+header{background:#302078;color:white;padding:22px 5%;display:flex;justify-content:space-between;align-items:center;gap:15px;flex-wrap:wrap}
+header h2{margin:0;font-size:21px}
+main{max-width:1400px;margin:auto;padding:25px}
+.card{background:white;padding:22px;border-radius:12px;margin-bottom:20px;border:1px solid #e8e7ef}
+h3{color:#302078;margin-top:0}
+button{background:#39258b;color:white;border:0;border-radius:7px;padding:12px 18px;cursor:pointer;font-weight:bold}
+button:hover{background:#24145e}
+input,select{width:100%;padding:12px;border:1px solid #d9d8e2;border-radius:7px;background:white}
+label{display:block;margin-bottom:7px;font-size:13px;font-weight:bold;color:#40366d}
+.filters{display:grid;grid-template-columns:repeat(4,1fr);gap:15px}
+.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:15px;margin-bottom:20px}
+.stat{background:#eeeaff;padding:20px;border-radius:10px;text-align:center}
+.stat strong{display:block;color:#302078;font-size:32px;margin-top:10px}
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;min-width:650px}
+th,td{padding:13px;border:1px solid #e9e8ef;text-align:left;font-size:13px}
+th{background:#f0edfa;color:#302078}
+.hidden{display:none!important}
+.status{font-size:13px;margin-top:12px;color:#625a78}
+.pill{background:#eeeaff;color:#39258b;padding:5px 10px;border-radius:20px}
+.login{max-width:430px;margin:35px auto}
+.actions{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.small{font-size:12px;color:#777}
+@media(max-width:750px){
+main{padding:12px}
+.filters{grid-template-columns:1fr 1fr}
+.stats{grid-template-columns:1fr}
+header{padding:18px}
+}
+@media(max-width:450px){.filters{grid-template-columns:1fr}}
+</style>
+</head>
+
+<body>
+
+<header>
+  <div>
+    <h2>SHIFT RESOURCE DASHBOARD</h2>
+    <div class="small" style="color:#ded8ff;margin-top:6px">
+      Resource Availability & Escalation Management
+    </div>
+  </div>
+  <div class="actions">
+    <span id="lastUpdated">Loading...</span>
+    <button id="loginButton" onclick="showLogin()">Admin Login</button>
+    <button id="logoutButton" class="hidden" onclick="logout()">Logout</button>
+  </div>
+</header>
+
+<main>
+
+<!-- ADMIN LOGIN -->
+
+<section id="loginPanel" class="card login hidden">
+  <h3>Administrator Login</h3>
+
+  <label>Email Address</label>
+  <input type="email" id="adminEmail" placeholder="Enter admin email">
+
+  <br><br>
+
+  <label>Password</label>
+  <input type="password" id="adminPassword" placeholder="Enter password">
+
+  <br><br>
+
+  <button onclick="login()">Login</button>
+  <p id="loginStatus" class="status"></p>
+</section>
+
+<!-- ADMIN UPLOAD -->
+
+<section id="adminPanel" class="card hidden">
+  <h3>Excel Upload – Admin Panel</h3>
+
+  <p>Upload the latest resource availability Excel workbook.</p>
+
+  <input type="file" id="excelFile" accept=".xlsx,.xls">
+
+  <br><br>
+
+  <button onclick="uploadExcel()">Upload & Publish Dashboard</button>
+
+  <p id="uploadStatus" class="status"></p>
+</section>
+
+<!-- FILTERS -->
+
+<section class="card">
+  <h3>Dashboard Filters</h3>
+
+  <div class="filters">
+
+    <div>
+      <label>Team</label>
+      <select id="teamFilter">
+        <option value="ALL">All Teams</option>
+      </select>
+    </div>
+
+    <div>
+      <label>Date</label>
+      <input type="date" id="dateFilter">
+    </div>
+
+    <div>
+      <label>Timezone</label>
+      <select id="timezoneFilter">
+        <option value="IST">IST</option>
+        <option value="EST">EST</option>
+        <option value="CST">CST</option>
+        <option value="PST">PST</option>
+      </select>
+    </div>
+
+    <div>
+      <label>Shift Timing</label>
+      <select id="shiftFilter">
+        <option value="ALL">All Shifts</option>
+      </select>
+    </div>
+
+  </div>
+</section>
+
+<!-- STATISTICS -->
+
+<section class="stats">
+
+  <div class="stat">
+    AVAILABLE RESOURCES
+    <strong id="resourceCount">0</strong>
+  </div>
+
+  <div class="stat">
+    TOTAL TEAMS
+    <strong id="teamCount">0</strong>
+  </div>
+
+  <div class="stat">
+    ESCALATION CONTACTS
+    <strong id="contactCount">0</strong>
+  </div>
+
+</section>
+
+<!-- RESOURCE TABLE -->
+
+<section class="card">
+  <h3>Available Resources</h3>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Resource Name</th>
+          <th>Email ID</th>
+          <th>Contact Number</th>
+          <th>Team</th>
+          <th>Shift Timing</th>
+        </tr>
+      </thead>
+
+      <tbody id="resourceBody">
+        <tr><td colspan="5">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ESCALATION TABLE -->
+
+<section class="card">
+  <h3>Escalation Contacts</h3>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Level</th>
+          <th>Name</th>
+          <th>Role</th>
+          <th>Email</th>
+          <th>Contact</th>
+          <th>Team</th>
+        </tr>
+      </thead>
+
+      <tbody id="escalationBody">
+        <tr><td colspan="6">Loading...</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<p class="small">
+Dashboard data reflects the latest Excel workbook published by the administrator.
+</p>
+
+</main>
+
+<script>
+
+// ===================================
+// 1. SUPABASE CONFIGURATION
+// ===================================
+
+// Replace these values with your actual details.
+
+const SUPABASE_URL = "YOUR_PROJECT_URL";
+
+const SUPABASE_KEY = "YOUR_PUBLISHABLE_KEY";
+
+const ADMIN_USER_ID = "YOUR_AKKA_USER_UUID";
+
+const db = window.supabase.createClient(
+  SUPABASE_URL,
+  SUPABASE_KEY
+);
+
+// ===================================
+// 2. CONFIGURATION
+// ===================================
+
+const ZONES = {
+  IST: "Asia/Kolkata",
+  EST: "America/New_York",
+  CST: "America/Chicago",
+  PST: "America/Los_Angeles"
+};
+
+let dashboard = {
+  teams: {},
+  escalations: []
+};
+
+let allShifts = [];
+
+const $ = id => document.getElementById(id);
+
+// ===================================
+// 3. HELPER FUNCTIONS
+// ===================================
+
+function safe(value) {
+  return String(value ?? "").replace(/[&<>"']/g, c => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  }[c]));
+}
+
+function norm(value) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function getDateIST() {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Asia/Kolkata",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).formatToParts(new Date());
+
+  const p = Object.fromEntries(parts.map(x => [x.type, x.value]));
+
+  return `${p.year}-${p.month}-${p.day}`;
+}
+
+function parseTime(value) {
+  const match = String(value).match(
+    /(\d{1,2}):(\d{2})\s*(AM|PM)/i
+  );
+
+  if (!match) return null;
+
+  let hour = Number(match[1]) % 12;
+
+  if (match[3].toUpperCase() === "PM") {
+    hour += 12;
+  }
+
+  return hour * 60 + Number(match[2]);
+}
+
+function convertShift(date, shift, zoneKey) {
+  if (!date || !shift) return shift;
+
+  const parts = shift.split(/\s*-\s*/);
+
+  if (parts.length !== 2) return shift;
+
+  const start = parseTime(parts[0]);
+  const end = parseTime(parts[1]);
+
+  if (start === null || end === null) return shift;
+
+  const [year, month, day] = date.split("-").map(Number);
+
+  // Excel roster dates and shift times are assumed to be IST.
+  const base = Date.UTC(year, month - 1, day) - 330 * 60000;
+
+  const startTime = base + start * 60000;
+
+  let endTime = base + end * 60000;
+
+  if (end <= start) {
+    endTime += 86400000;
+  }
+
+  const format = timestamp =>
+    new Intl.DateTimeFormat("en-US", {
+      timeZone: ZONES[zoneKey],
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true
+    }).format(new Date(timestamp));
+
+  return format(startTime) + " - " + format(endTime);
+}
+
+function excelDate(value) {
+  if (value instanceof Date && !isNaN(value)) {
+    return [
+      value.getFullYear(),
+      String(value.getMonth() + 1).padStart(2, "0"),
+      String(value.getDate()).padStart(2, "0")
+    ].join("-");
+  }
+
+  if (typeof value === "number") {
+    const d = XLSX.SSF.parse_date_code(value);
+
+    if (d) {
+      return `${d.y}-${String(d.m).padStart(2, "0")}-${String(d.d).padStart(2, "0")}`;
+    }
+  }
+
+  const text = String(value ?? "").trim();
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    return text;
+  }
+
+  const d = new Date(text);
+
+  if (!isNaN(d)) {
+    return [
+      d.getFullYear(),
+      String(d.getMonth() + 1).padStart(2, "0"),
+      String(d.getDate()).padStart(2, "0")
+    ].join("-");
+  }
+
+  return "";
+}
+
+function getValue(row, headers, names) {
+  const index = headers.findIndex(h =>
+    names.includes(norm(h))
+  );
+
+  return index < 0 ? "" : row[index];
+}
+
+// ===================================
+// 4. EXCEL PARSER
+// ===================================
+
+function parseExcel(workbook) {
+
+  const teams = {};
+  const escalations = [];
+
+  workbook.SheetNames.forEach(sheetName => {
+
+    const rows = XLSX.utils.sheet_to_json(
+      workbook.Sheets[sheetName],
+      {
+        header: 1,
+        defval: "",
+        raw: true,
+        cellDates: true
+      }
+    );
+
+    if (!rows.length) return;
+
+    const headers = rows[0];
+
+    // Escalation contacts sheet
+    if (norm(sheetName).includes("escalation")) {
+
+      rows.slice(1).forEach(row => {
+
+        if (row.every(x => String(x).trim() === "")) {
+          return;
+        }
+
+        escalations.push({
+
+          team: String(
+            getValue(row, headers, ["team", "team name"])
+          ).trim(),
+
+          level: String(
+            getValue(row, headers, ["escalation level", "level"])
+          ).trim(),
+
+          name: String(
+            getValue(row, headers, ["contact name", "name"])
+          ).trim(),
+
+          role: String(
+            getValue(row, headers, ["role", "designation"])
+          ).trim(),
+
+          email: String(
+            getValue(row, headers, ["email id", "email"])
+          ).trim(),
+
+          contact: String(
+            getValue(row, headers, [
+              "contact no.",
+              "contact no",
+              "contact number",
+              "phone"
+            ])
+          ).trim()
+
+        });
+
+      });
+
+      return;
+    }
+
+    // Team resource sheets
+    const dateColumns = [];
+
+    headers.forEach((header, index) => {
+
+      if (index >= 4) {
+
+        const date = excelDate(header);
+
+        if (date) {
+          dateColumns.push({
+            index,
+            date
+          });
+        }
+
+      }
+
+    });
+
+    const resources = rows.slice(1)
+      .filter(row => String(row[0]).trim() !== "")
+      .map(row => ({
+
+        name: String(
+          getValue(row, headers, ["resource name", "name"])
+        ).trim(),
+
+        email: String(
+          getValue(row, headers, ["email id", "email"])
+        ).trim(),
+
+        contact: String(
+          getValue(row, headers, [
+            "contact no.",
+            "contact no",
+            "contact number",
+            "phone"
+          ])
+        ).trim(),
+
+        schedule: Object.fromEntries(
+          dateColumns.map(column => [
+            column.date,
+            String(row[column.index] ?? "").trim()
+          ])
+        )
+
+      }));
+
+    if (resources.length) {
+      teams[sheetName] = resources;
+    }
+
+  });
+
+  return {
+    teams,
+    escalations
+  };
+}
+
+// ===================================
+// 5. FILTER OPTIONS
+// ===================================
+
+function updateTeamOptions() {
+
+  const previous = $("teamFilter").value;
+
+  const names = Object.keys(dashboard.teams);
+
+  $("teamFilter").innerHTML =
+    '<option value="ALL">All Teams</option>' +
+    names.map(team =>
+      `<option value="${safe(team)}">${safe(team)}</option>`
+    ).join("");
+
+  if (names.includes(previous)) {
+    $("teamFilter").value = previous;
+  }
+}
+
+function updateShiftOptions() {
+
+  const previous = $("shiftFilter").value;
+
+  const date = $("dateFilter").value;
+  const zone = $("timezoneFilter").value;
+
+  $("shiftFilter").innerHTML =
+    '<option value="ALL">All Shifts</option>' +
+    allShifts.map(shift =>
+      `<option value="${safe(shift)}">
+        ${safe(convertShift(date, shift, zone))} (${zone})
+      </option>`
+    ).join("");
+
+  if (allShifts.includes(previous)) {
+    $("shiftFilter").value = previous;
+  }
+}
+
+// ===================================
+// 6. DASHBOARD RENDERING
+// ===================================
+
+function renderDashboard() {
+
+  updateShiftOptions();
+
+  const selectedTeam = $("teamFilter").value;
+  const date = $("dateFilter").value;
+  const zone = $("timezoneFilter").value;
+  const selectedShift = $("shiftFilter").value;
+
+  const resources = [];
+
+  Object.entries(dashboard.teams).forEach(([team, list]) => {
+
+    if (
+      selectedTeam !== "ALL" &&
+      norm(team) !== norm(selectedTeam)
+    ) return;
+
+    list.forEach(resource => {
+
+      const shift = resource.schedule?.[date] || "";
+
+      if (!allShifts.includes(shift)) return;
+
+      if (
+        selectedShift !== "ALL" &&
+        selectedShift !== shift
+      ) return;
+
+      resources.push({
+        ...resource,
+        team,
+        displayShift: convertShift(date, shift, zone)
+      });
+
+    });
+
+  });
+
+  $("resourceCount").textContent = resources.length;
+
+  $("teamCount").textContent =
+    Object.keys(dashboard.teams).length;
+
+  $("contactCount").textContent =
+    dashboard.escalations.filter(e =>
+      selectedTeam === "ALL" ||
+      norm(e.team) === norm(selectedTeam)
+    ).length;
+
+  $("resourceBody").innerHTML = resources.length
+    ? resources.map(r => `
+      <tr>
+        <td>${safe(r.name)}</td>
+        <td>${safe(r.email)}</td>
+        <td>${safe(r.contact)}</td>
+        <td><span class="pill">${safe(r.team)}</span></td>
+        <td>${safe(r.displayShift)} (${zone})</td>
+      </tr>
+    `).join("")
+    : '<tr><td colspan="5">No resources available for this selection.</td></tr>';
+
+  const contacts = dashboard.escalations.filter(e =>
+    selectedTeam === "ALL" ||
+    norm(e.team) === norm(selectedTeam)
+  );
+
+  $("escalationBody").innerHTML = contacts.length
+    ? contacts.map(e => `
+      <tr>
+        <td>${safe(e.level)}</td>
+        <td>${safe(e.name)}</td>
+        <td>${safe(e.role)}</td>
+        <td>${safe(e.email)}</td>
+        <td>${safe(e.contact)}</td>
+        <td>${safe(e.team)}</td>
+      </tr>
+    `).join("")
+    : '<tr><td colspan="6">No escalation contacts available.</td></tr>';
+
+}
+
+// ===================================
+// 7. LOAD DATABASE DATA
+// ===================================
+
+async function loadDashboard() {
+
+  const { data, error } = await db
+    .from("dashboard_snapshot")
+    .select("payload,updated_at")
+    .eq("id", 1)
+    .maybeSingle();
+
+  if (error) {
+
+    console.error(error);
+
+    $("resourceBody").innerHTML =
+      '<tr><td colspan="5">Unable to load dashboard data.</td></tr>';
+
+    $("lastUpdated").textContent = "Connection error";
+
+    return;
+  }
+
+  if (!data) {
+
+    dashboard = {
+      teams: {},
+      escalations: []
+    };
+
+    $("resourceBody").innerHTML =
+      '<tr><td colspan="5">Waiting for administrator to upload Excel.</td></tr>';
+
+    $("lastUpdated").textContent = "No data uploaded";
+
+    return;
+  }
+
+  dashboard = data.payload;
+
+  allShifts = [
+    ...new Set(
+      Object.values(dashboard.teams)
+        .flat()
+        .flatMap(r => Object.values(r.schedule || {}))
+        .filter(Boolean)
+    )
+  ];
+
+  updateTeamOptions();
+  renderDashboard();
+
+  $("lastUpdated").textContent =
+    "Updated: " + new Date(data.updated_at).toLocaleString();
+
+}
+
+// ===================================
+// 8. ADMIN LOGIN
+// ===================================
+
+function showLogin() {
+  $("loginPanel").classList.toggle("hidden");
+}
+
+async function login() {
+
+  $("loginStatus").textContent = "Signing in...";
+
+  const { data, error } = await db.auth.signInWithPassword({
+
+    email: $("adminEmail").value.trim(),
+
+    password: $("adminPassword").value
+
+  });
+
+  if (error) {
+
+    $("loginStatus").textContent = error.message;
+
+    return;
+  }
+
+  if (data.user.id !== ADMIN_USER_ID) {
+
+    await db.auth.signOut();
+
+    $("loginStatus").textContent =
+      "Access denied. Only the authorized administrator can login.";
+
+    return;
+  }
+
+  showAdminPanel();
+
+}
+
+function showAdminPanel() {
+
+  $("adminPanel").classList.remove("hidden");
+
+  $("loginPanel").classList.add("hidden");
+
+  $("loginButton").classList.add("hidden");
+
+  $("logoutButton").classList.remove("hidden");
+
+}
+
+async function logout() {
+
+  await db.auth.signOut();
+
+  $("adminPanel").classList.add("hidden");
+
+  $("loginPanel").classList.add("hidden");
+
+  $("loginButton").classList.remove("hidden");
+
+  $("logoutButton").classList.add("hidden");
+
+}
+
+// ===================================
+// 9. EXCEL UPLOAD
+// ===================================
+
+async function uploadExcel() {
+
+  const file = $("excelFile").files[0];
+
+  if (!file) {
+
+    $("uploadStatus").textContent =
+      "Please select an Excel file.";
+
+    return;
+  }
+
+  $("uploadStatus").textContent = "Reading Excel file...";
+
+  try {
+
+    const { data: sessionData } = await db.auth.getSession();
+
+    const user = sessionData.session?.user;
+
+    if (!user || user.id !== ADMIN_USER_ID) {
+      throw new Error("Administrator login required.");
+    }
+
+    const buffer = await file.arrayBuffer();
+
+    const workbook = XLSX.read(buffer, {
+      type: "array",
+      cellDates: true
+    });
+
+    const parsed = parseExcel(workbook);
+
+    if (!Object.keys(parsed.teams).length) {
+      throw new Error(
+        "No team sheets found. Please check your Excel format."
+      );
+    }
+
+    $("uploadStatus").textContent =
+      "Publishing dashboard data...";
+
+    const { error } = await db
+      .from("dashboard_snapshot")
+      .upsert({
+        id: 1,
+        payload: parsed,
+        updated_at: new Date().toISOString()
+      });
+
+    if (error) throw error;
+
+    $("uploadStatus").textContent =
+      "Excel uploaded successfully! Dashboard published.";
+
+    $("excelFile").value = "";
+
+    await loadDashboard();
+
+  } catch (error) {
+
+    console.error(error);
+
+    $("uploadStatus").textContent =
+      "Upload failed: " + error.message;
+
+  }
+
+}
+
+// ===================================
+// 10. FILTER EVENTS
+// ===================================
+
+["teamFilter", "dateFilter", "timezoneFilter", "shiftFilter"]
+.forEach(id => {
+
+  $(id).addEventListener("change", renderDashboard);
+
+});
+
+// ===================================
+// 11. AUTHENTICATION STATE
+// ===================================
+
+async function initialize() {
+
+  $("dateFilter").value = getDateIST();
+
+  const { data } = await db.auth.getSession();
+
+  const user = data.session?.user;
+
+  if (user) {
+
+    if (user.id === ADMIN_USER_ID) {
+      showAdminPanel();
+    } else {
+      await db.auth.signOut();
+    }
+
+  }
+
+  await loadDashboard();
+
+}
+
+db.auth.onAuthStateChange((event, session) => {
+
+  if (event === "SIGNED_IN" && session) {
+
+    if (session.user.id === ADMIN_USER_ID) {
+
+      showAdminPanel();
+
+    } else {
+
+      db.auth.signOut();
+
+    }
+
+  }
+
+  if (event === "SIGNED_OUT") {
+
+    $("adminPanel").classList.add("hidden");
+
+    $("logoutButton").classList.add("hidden");
+
+    $("loginButton").classList.remove("hidden");
+
+  }
+
+});
+
+// Auto-refresh for leads
+setInterval(loadDashboard, 30000);
+
+initialize();
+
+</script>
+
+</body>
+</html>
